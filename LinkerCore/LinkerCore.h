@@ -1,8 +1,9 @@
 #pragma once
+
 #include <string>
 #include <iostream>
 
-
+#include <qdatastream.h>
 #include <qdebug.h>
 #include <qstandardpaths.h>
 #include <qdir.h>
@@ -10,203 +11,439 @@
 #include <qjsondocument.h>
 #include <qjsonarray.h>
 #include <qjsonvalue.h>
-
-/*
-* [函数返回类型]
-* #1.1 int类型
-* 1.return 0
-* 没有问题，正常运行
-* 2 reuturn 1
-* 运行正常，但部分任务未执行（看函数功能）
-* 3 return -1
-* 运行故障
-* 
-* 
-* 
-*/
+#include <quuid.h>
+#include <qcryptographichash.h>
+#include <qtextcodec.h>
+#include <QtSql\qsqldatabase.h>
+#include <QtSql\qsqlerror.h>
+#include <QtSql\qsqlquery.h>
+#include <QtSql\qsqlrecord.h>
 
 
 
-
-
-namespace LinkerCore
+class LinkerCore
 {
-	class LinkerCore
+private:
+	//是否初始化
+	bool inited = false;
+	//是否登录
+	bool logined = false;
+	//是否初始化设置
+	bool inited_setting = false;
+	//初始化结果
+	int inited_result = -3;
+
+public:
+	//数据库操作
+	QSqlDatabase db;
+	
+	//数据文件主路径
+	QString MainPath;
+	//config.json路径
+	QString ConfigPath;
+	//用户文件路径
+	QString UserFilePath;
+	//日志路径
+	QString LogPath;
+	//组件路径
+	QString PackagePath;
+	//通用文件操作
+	QFile File;
+	//config文件
+	QFile file_config;
+	//通用路径操作
+	QDir Dir;
+	//项目路径组
+	QJsonObject Pro_path;
+	//项目初始设置
+	QJsonObject Settings;
+	//项目当前设置
+	QJsonObject Current_settings;
+	//Json文档
+	QJsonDocument Jsdoc;
+
+	//初始化类
+	int init(QJsonObject pro_path)
 	{
-	private:
-		bool inited = false;
-	public:
-		std::string project;
-		int inited_result = -3;
-		bool inited_setting = false;
-		//数据文件主路径
-		QString MainPath;
-		//config.json路径
-		QString ConfigPath;
-		//通用文件操作
-		QFile File;
-		//config文件
-		QFile file_config;
-		//通用路径操作
-		QDir Dir;
-		//项目路径组
-		QJsonObject Pro_path;
-		//项目初始设置
-		QJsonObject Settings;
-		//项目当前设置
-		QJsonObject Current_settings;
-		//项目数据路径
-		QJsonObject Paths;
-		//Json文档
-		QJsonDocument Jsdoc;
-
-		//初始化类
-		int init(QJsonObject pro_path);
-		//项目设置
-		int init_settings(QJsonObject settingsl, bool confirm);
-		//创建用户
-		int reg(QString username, QString psw);
-		//获取设置
-		QString get_setting(QString key);
-		
-
-
-	};
-}
-
-
-//初始化
-int LinkerCore::LinkerCore::init(QJsonObject pro_path)
-
-{
-	if (inited == false)
-	{
-		//配置文件操作
-		
-		
-		try
+		/*
+		[返回值说明]
+		1.<0>
+		运行正常
+		2.<-1>
+		未成功打开config.json
+		3.<-2>
+		未知错误
+		*/
+		if (inited == false)
 		{
-			//数据文件主路径
-			MainPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation)+"/";
-			MainPath.append(pro_path.value("Parent").toString());
-			MainPath.append("/");
-			MainPath.append(pro_path.value("Child").toString());
-			//config.json路径
-			ConfigPath = MainPath.append("/config.json");
-			//获取项目文件路径
-			Pro_path = pro_path;
-			//配置文件
-			QFile file_config(ConfigPath);
-			//若文件不存在
-			if (!File.exists(ConfigPath))
+
+			try
 			{
-				
-				try
+				//数据文件主路径
+				MainPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/";
+				MainPath.append(pro_path.value("Parent").toString());
+				if (!File.exists(MainPath))
 				{
-					//config文件打开
-					file_config.open(QIODevice::WriteOnly);
-					if (inited_setting == true)
+					Dir.mkdir(MainPath);
+				}
+				MainPath.append("/");
+				MainPath.append(pro_path.value("Child").toString());
+				if (!File.exists(MainPath))
+				{
+					Dir.mkdir(MainPath);
+				}
+				//config.json路径
+				ConfigPath = MainPath + "/config.json";
+				//用户文件路径
+				UserFilePath = MainPath + "/user";
+				//日志路径
+				LogPath = MainPath + "/log";
+				//组件路径
+				PackagePath = MainPath + "/package";
+				//获取项目文件路径
+				Pro_path = pro_path;
+				//配置文件
+				QFile file_config(ConfigPath);
+				
+				if (!File.exists(UserFilePath))
+				{
+					Dir.mkdir(UserFilePath);
+				}
+				if (!File.exists(LogPath))
+				{
+					Dir.mkdir(LogPath);
+				}
+				if (!File.exists(PackagePath))
+				{
+					Dir.mkdir(PackagePath);
+				}
+				//若文件不存在
+				if (!File.exists(ConfigPath))
+				{
+
+					try
 					{
-						Jsdoc.setObject(Settings);
-						file_config.write(Jsdoc.toJson());
-						file_config.close();
-						Current_settings = Jsdoc.object();
-						inited_result = 0;
+						//config文件打开
+						file_config.open(QIODevice::WriteOnly);
+						if (inited_setting == true)
+						{
+							Jsdoc.setObject(Settings);
+							file_config.write(Jsdoc.toJson());
+							file_config.close();
+							Current_settings = Jsdoc.object();
+							inited_result = 0;
+							inited = true;
+							return 0;
+						}
+
 						inited = true;
-						return 0;
+						//初始化但没有项目设置
+						inited_result = 1;
+						file_config.close();
+						inited = true;
+						return 1;
+					}
+					catch (const std::exception&)
+					{
+						if (file_config.isOpen())
+						{
+							file_config.close();
+						}
+						//未成功打开config.json
+						inited_result = -1;
+						return -1;
 					}
 
-					inited = true;
-					//初始化但没有项目设置
-					inited_result = 1;
-					file_config.close();
-					inited = true;
-					return 1;
 				}
-				catch (const std::exception&)
+				else
 				{
-					if (file_config.isOpen())
-					{
-						file_config.close();
-					}
-					inited_result = -1;
-					return -1;
+					file_config.open(QIODevice::ReadOnly);
+					QByteArray config_data = file_config.readAll();
+					Jsdoc = QJsonDocument::fromJson(config_data);
+					Current_settings = Jsdoc.object();
 				}
-				
+				inited = true;
 			}
-			else
+			catch (const std::exception&)
 			{
-				file_config.open(QIODevice::ReadOnly);
-				QByteArray config_data = file_config.readAll();
-				Jsdoc = QJsonDocument::fromJson(config_data);
-				Current_settings = Jsdoc.object();
+				//其它错误
+				inited_result = -2;
+				return -2;
 			}
-			inited = true;
+
 		}
-		catch (const std::exception&)
-		{
-			
-			//初始化异常
-			inited_result = -1;
-			return -1;
-		}
-		
+		//初始化成功/已初始化
+		inited_result = 0;
+		inited = true;
+		return 0;
 	}
-	//初始化成功/已初始化
-	inited_result = 0;
-	inited = true;
-	return 0;
-}
-//初始化设置
-int LinkerCore::LinkerCore::init_settings(QJsonObject settings,bool confirm=false)
-{
-	Settings = settings;
-	inited_setting = true;
-	if (confirm == false)
+	/*
+	init(QJsonObject project_path)
+	将会初始化
 	{
-		//初始化但没有写入
-		return 1;
+	//数据文件主路径
+	QString MainPath;
+
+	//config.json路径
+	QString ConfigPath;
+
+	//用户文件路径
+	QString UserFilePath;
+
+	//日志路径
+	QString LogPath;
+
+	//组件路径
+	QString PackagePath;
+
+	//config文件
+	QFile file_config;
+
+	//项目路径组
+	QJsonObject Pro_path;
 	}
-	else
+	**注意：以下是可能会初始化的，具体见返回值
 	{
-		try
+	//项目初始设置
+	QJsonObject Settings;
+
+	//项目当前设置
+	QJsonObject Current_settings;
+
+	}
+	*/
+	//项目设置
+	int init_settings(QJsonObject settings, bool confirm = false)
+	{
+		/*
+		[返回值说明]
+		1.<0>
+		运行正常
+		2.<1>
+		初始化但没有写入
+		3.<-1>
+		未成功写入
+		*/
+		Settings = settings;
+		inited_setting = true;
+		if (confirm == false)
 		{
-		file_config.open(QIODevice::WriteOnly);
-		Jsdoc.setObject(Settings);
-		file_config.write(Jsdoc.toJson());
-		file_config.close();
+			//初始化但没有写入
+			return 1;
 		}
-		catch (const std::exception&)
+		else
 		{
-			if (file_config.isOpen())
+			try
 			{
+				file_config.open(QIODevice::WriteOnly);
+				Jsdoc.setObject(Settings);
+				file_config.write(Jsdoc.toJson());
 				file_config.close();
 			}
-			return -1;
+			catch (const std::exception&)
+			{
+				if (file_config.isOpen())
+				{
+					file_config.close();
+				}
+				return -1;
+			}
+
+			return 0;
+		}
+		return 0;
+	}
+	//获取设置
+	QString get_setting(QString key)
+	{
+		if (inited_setting=true)
+		{
+			return Current_settings.value(key).toString();
+		}
+		else
+		{
+			return "";
+		}
+	}
+	//创建用户
+	int reg(QString username, QString psw = "")
+	{
+		/*
+		[返回值说明]
+		1.<0>
+		运行正常
+
+		2.<-1>
+		未打开数据库
+
+		3.<-2>
+		未初始化
+
+		4.<-3>
+		插入数据出错/已注册
+		*/
+		if (inited == false)
+		{
+			return -2;
+		}
+		else
+		{
+			if (QSqlDatabase::contains("Users"))
+			{
+				db = QSqlDatabase::database("Users");
+			}	
+			else
+			{
+				db = QSqlDatabase::addDatabase("QSQLITE","Users");
+				db.setDatabaseName(UserFilePath + "/Users.lsf");
+			}
+			db.open();
+
+			if (!db.isOpen())
+			{
+				//未打开用户数据库
+				return -1;
+			}
+			QSqlQuery sql_query(db);
+			//命令
+			
+			if (psw == "" && username != "")
+			{
+				QString cmd = "create table if not exists Users ( Name VARCHAR(10), UUID VARCHAR(56), PRIMARY KEY(Name, UUID))";
+				sql_query.prepare(cmd);
+				if (!sql_query.exec())
+				{
+					qDebug() << "Error: Fail to create table." << sql_query.lastError();
+					return -2;
+				}
+				cmd = "insert into Users values(?,?)";
+				sql_query.prepare(cmd);
+				sql_query.addBindValue(username);
+				sql_query.addBindValue((QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex());
+			}
+			else if (psw != "" && username != "")
+			{
+				QString cmd = "create table if not exists Users ( Name VARCHAR(10), UUID VARCHAR(56), Password VARCHAR(64), PRIMARY KEY(Name,UUID))";
+				sql_query.prepare(cmd);
+				if (!sql_query.exec())
+				{
+					qDebug() << "Error: Fail to create table." << sql_query.lastError();
+					return -2;
+				}
+				cmd = "insert into Users values(?,?.?)";
+				sql_query.prepare(cmd);
+				sql_query.addBindValue(username);
+				sql_query.addBindValue((QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex());
+				sql_query.addBindValue((QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex());
+			}
+			if (!sql_query.exec())
+			{
+				qDebug() << sql_query.lastError() << endl;
+				db.close();
+				return -3;
+			}
+			db.close();
+			return 0;
 		}
 
+	}
+	//登录 
+	int login(QString username, QString psw = "")
+	{
+		/*
+		[返回值说明]
+		1.<0>
+		运行正常
+
+		2.<-1>
+		未打开数据库
+
+		3.<-2>
+		未初始化
+
+		4.<-3>
+		未登录成功
+		*/
+		//判断是否初始化
+		if (inited == false)
+		{
+			return -2;
+		}
+		//判断是否存在Users连接
+		if (QSqlDatabase::contains("Users"))
+		{
+			db = QSqlDatabase::database("Users");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+			db.setDatabaseName(UserFilePath + "/Users.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return -1;
+		}
+		QSqlQuery sql_query(db);
+		if (psw == "" && username != "")
+		{
+			QString cmd = "select * from Users where Name='"+username+"' and UUID='"+ (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex()+"'";
+			sql_query.prepare(cmd);
+			if (!sql_query.exec())
+			{
+				qDebug() << "Error: Fail to select." << sql_query.lastError();
+				return -2;
+			}
+			if (!sql_query.next())
+			{
+				return -3;
+			}
+			return 0;
+		}
+		else if (psw != "" && username != "")
+		{
+			QString cmd = "create table if not exists Users ( Name VARCHAR(10), Password TEXT(256) null, PRIMARY KEY(Name))";
+			sql_query.prepare(cmd);
+			if (!sql_query.exec())
+			{
+				qDebug() << "Error: Fail to select." << sql_query.lastError();
+				return -2;
+			}
+		}
+		if (!sql_query.exec())
+		{
+			qDebug() << sql_query.lastError() << endl;
+			db.close();
+			return -3;
+		}
+		db.close();
 		return 0;
+	
+
+
 	}
-	return 0;
-}
-//获取设置
-QString LinkerCore::LinkerCore::get_setting(QString key)
-{
-	if (inited)
+	//查看所有用户 *[返回int或QJsonObject]
+	auto show_users(void)
 	{
-		return Current_settings.value(key).toString();
+		//if (inited == false)
+		//{
+		//	return -2;
+		//}
+		//QSqlQuery query;
+		//query.exec("select * from student");
+		//QSqlRecord rec = query.record();
+
+		//// 移动到第一条语句，如果移动成功则输出此条记录
+		//if (query.first())
+		//{
+		//	rec = query.record();
+		//	int snocol = rec.indexOf("sno");
+		//	qDebug() << "sno:" << query.value(snocol).toString();
+		//}
 	}
-	else
-	{
-		return "";
-	}
-}
-//创建账号
-int LinkerCore::LinkerCore::reg(QString username, QString psw = "")
-{
-	if (psw == "")
-	{
-		return 0;
-	}
-	return 0;
-}
+
+
+
+};
