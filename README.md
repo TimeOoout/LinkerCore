@@ -74,8 +74,8 @@ int main()
     LinkerCore LC;
     QJsonObject MainPath;
     //项目主路经
-	MainPath.insert("Parent", "Linker");
-	MainPath.insert("Child", "Linker");
+    MainPath.insert("Parent", "Linker");
+    MainPath.insert("Child", "Linker");
     /* init函数 */
     LC.init(MainPath);
     /* reg函数 */
