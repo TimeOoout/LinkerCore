@@ -64,7 +64,7 @@ public:
 	//Json文档
 	QJsonDocument Jsdoc;
 
-	//由函数 show_users赋值
+	//由函数 show_users 赋值
 	QJsonObject user_list;
 
 	//初始化类
@@ -72,13 +72,9 @@ public:
 	{
 		/*
 		[返回值说明]
-		1.<0>
-		运行正常
-		2.<-1>
-		未成功打开config.json
-		3.<-2>
-		未知错误
-		4.<-3>:未成功初始化用户数据库
+		1.<0>:运行正常
+		2.<-1>:未成功打开config.json
+		3.<-2>:未知错误
 		*/
 		if (inited == false)
 		{
@@ -277,17 +273,10 @@ public:
 	{
 		/*
 		[返回值说明]
-		1.<0>
-		运行正常
-
-		2.<-1>
-		未打开数据库
-
-		3.<-2>
-		未初始化
-
-		4.<-3>
-		插入数据出错/已注册
+		1.<0>:运行正常
+		2.<-1>:未打开数据库
+		3.<-2>:未初始化
+		4.<-3>:插入数据出错/已注册
 		*/
 		if (inited == false)
 		{
@@ -367,17 +356,10 @@ public:
 	{
 		/*
 		[返回值说明]
-		1.<0>
-		运行正常
-
-		2.<-1>
-		未打开数据库
-
-		3.<-2>
-		未初始化
-
-		4.<-3>
-		未登录成功
+		1.<0>:运行正常
+		2.<-1>:未打开数据库
+		3.<-2>:未初始化
+		4.<-3>:未登录成功(密码或用户名错误)
 		*/
 		//判断是否初始化
 		if (inited == false)
@@ -449,9 +431,10 @@ public:
 	//查看所有用户 *[返回QJsonObject user_list]
 	QJsonObject show_users(void)
 	{
+		QJsonObject get;
 		if (inited == false)
 		{
-			return user_list;
+			return get;
 		}
 		//判断是否存在Users连接
 		if (QSqlDatabase::contains("Users"))
@@ -468,14 +451,13 @@ public:
 		if (!db.isOpen())
 		{
 			//未打开用户数据库的情况
-			return user_list;
+			return get;
 		}
 		QSqlQuery query(db);
 		query.exec("select * from Users");
 		QSqlRecord rec = query.record();
 		QString name;
 		QString uuid;
-		QString psw;
 		while (query.next())
 		{
 			rec = query.record();
@@ -483,15 +465,23 @@ public:
 			name = query.value(rec.indexOf("Name")).toString();
 			//qDebug() << "UserName:" << name;
 			//qDebug() << "UUID:" << uuid;
-			user_list.insert(name,uuid);
+			get.insert(name,uuid);
 
 		}
 		db.close();
-		return user_list;
+		user_list = get;
+		return get;
 	}
 	//删除用户
-	int delet_user(std::string Username, std::string Psw = "")
+	int delete_user(std::string Username, std::string Psw = "")
 	{
+		/*
+		[返回值说明]
+		1.<0>:运行正常
+		2.<-1>:未成功打开用户数据库
+		3.<-2>:未初始化
+		4.<-3>:未成功删除/其他错误
+		*/
 		if (inited == false)
 		{
 			return -2;
@@ -518,12 +508,34 @@ public:
 		QString psw = QString::fromLocal8Bit(Psw.c_str());
 		if (Username != "" && psw == "")
 		{
-			return query.exec("delet * from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "'");
+			if (query.exec("delete from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "'"))
+			{
+				db.close();
+				show_users();
+				if (user_list.value(username) == (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex())
+				{
+					//未成功删除
+					return -3;
+				}
+				return 0;
+			}
 		}
 		else if (Username != "" && psw != "")
 		{
-			return query.exec("delet * from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'");
+			if (query.exec("delete from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'"))
+			{
+				db.close();
+				show_users();
+				if (user_list.value(username) == (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex())
+				{
+					//未成功删除
+					return -3;
+				}
+				return 0;
+			}
 		}
+		db.close();
+		return -3;
 	}
 
 

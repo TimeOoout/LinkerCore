@@ -14,6 +14,8 @@ int main(int argc, char* argv[])
 	qDebug() << QString::fromLocal8Bit("²âÊÔ»ñÈ¡ÉèÖÃ:") << LC.get_setting("Project") << endl;
 	qDebug() << QString::fromLocal8Bit("²âÊÔ×¢²á:" )<< LC.reg("²âÊÔ") << endl;
 	qDebug() << QString::fromLocal8Bit("²âÊÔµÇÂ¼:") << LC.login("²âÊÔ") << endl;
-	qDebug() << LC.show_users() << endl << LC.delet_user("²âÊÔ");
+	qDebug() << LC.show_users() << endl;
+	qDebug() << LC.delete_user("test");
+	qDebug() << LC.show_users() << endl;
 } 
 
