@@ -32,8 +32,9 @@ private:
 	bool inited_setting = false;
 	//初始化结果
 	int inited_result = -3;
-	//是否使用密码
-	bool use_pw;
+	//是否记录日志（默认开启
+	bool Logging = true;
+
 
 
 public:
@@ -66,33 +67,46 @@ public:
 
 	//由函数 show_users 赋值
 	QJsonObject user_list;
+	QJsonObject user_psw;
+
+	/*当前用户操作*/
+	//用户名
+	QString UserName;
+	//用户UUID
+	QString UserUUID;
+
+
+
 
 	//初始化类
-	int init(QJsonObject pro_path)
+	int init(QJsonObject pro_path,bool log=true)
 	{
 		/*
 		[返回值说明]
 		1.<0>:运行正常
 		2.<-1>:未成功打开config.json
 		3.<-2>:未知错误
+		4.<-3>:未成功创建用户数据库
 		*/
 		if (inited == false)
 		{
-
 			try
 			{
+				Logging = log;
 				//数据文件主路径
-				MainPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/";
-				MainPath.append(pro_path.value("Parent").toString());
-				if (!File.exists(MainPath))
 				{
-					Dir.mkdir(MainPath);
-				}
-				MainPath.append("/");
-				MainPath.append(pro_path.value("Child").toString());
-				if (!File.exists(MainPath))
-				{
-					Dir.mkdir(MainPath);
+					MainPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/";
+					MainPath.append(pro_path.value("Parent").toString());
+					if (!File.exists(MainPath))
+					{
+						Dir.mkdir(MainPath);
+					}
+					MainPath.append("/");
+					MainPath.append(pro_path.value("Child").toString());
+					if (!File.exists(MainPath))
+					{
+						Dir.mkdir(MainPath);
+					}
 				}
 				//config.json路径
 				ConfigPath = MainPath + "/config.json";
@@ -106,66 +120,97 @@ public:
 				Pro_path = pro_path;
 				//配置文件
 				QFile file_config(ConfigPath);
-				
-				if (!File.exists(UserFilePath))
+				//检查路径是否存在
 				{
-					Dir.mkdir(UserFilePath);
-				}
-				if (!File.exists(LogPath))
-				{
-					Dir.mkdir(LogPath);
-				}
-				if (!File.exists(PackagePath))
-				{
-					Dir.mkdir(PackagePath);
-				}
-
-				//若文件不存在
-				if (!File.exists(ConfigPath))
-				{
-
-					try
+					if (!File.exists(UserFilePath))
 					{
-						//config文件打开
-						file_config.open(QIODevice::WriteOnly);
-						if (inited_setting == true)
-						{
-							Jsdoc.setObject(Settings);
-							file_config.write(Jsdoc.toJson());
-							file_config.close();
-							Current_settings = Jsdoc.object();
-							inited_result = 0;
-							inited = true;
-							return 0;
-						}
-
-						inited = true;
-						//初始化但没有项目设置
-						inited_result = 1;
-						file_config.close();
-						inited = true;
-						return 1;
+						Dir.mkdir(UserFilePath);
 					}
-					catch (const std::exception&)
+					if (!File.exists(LogPath))
 					{
-						if (file_config.isOpen())
-						{
-							file_config.close();
-						}
-						//未成功打开config.json
-						inited_result = -1;
+						Dir.mkdir(LogPath);
+					}
+					if (!File.exists(PackagePath))
+					{
+						Dir.mkdir(PackagePath);
+					}
+				}
+				/**创建用户数据库**/
+				{
+					if (QSqlDatabase::contains("Users"))
+					{
+						db = QSqlDatabase::database("Users");
+					}
+					else
+					{
+						db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+						db.setDatabaseName(UserFilePath + "/Users.lsf");
+					}
+					//打开数据库
+					db.open();
+
+					if (!db.isOpen())
+					{
+						//未打开用户数据库
 						return -1;
 					}
+					QSqlQuery sql_query(db);
+					if (!sql_query.exec("create table if not exists Users( Name VARCHAR(10), UUID VARCHAR(56) PRIMARY KEY, Password VARCHAR(64));"))
+					{
+						//qDebug() << "Error: Fail to create table." << sql_query.lastError();
+						db.close();
+						return -3;
+					}
+				}
 
-				}
-				else
+				//若config文件不存在
 				{
-					file_config.open(QIODevice::ReadOnly);
-					QByteArray config_data = file_config.readAll();
-					Jsdoc = QJsonDocument::fromJson(config_data);
-					Current_settings = Jsdoc.object();
+					if (!File.exists(ConfigPath))
+					{
+
+						try
+						{
+							//config文件打开
+							file_config.open(QIODevice::WriteOnly);
+							if (inited_setting == true)
+							{
+								Jsdoc.setObject(Settings);
+								file_config.write(Jsdoc.toJson());
+								file_config.close();
+								Current_settings = Jsdoc.object();
+								inited_result = 0;
+								inited = true;
+								return 0;
+							}
+
+							inited = true;
+							//初始化但没有项目设置
+							inited_result = 1;
+							file_config.close();
+							inited = true;
+							return 1;
+						}
+						catch (const std::exception&)
+						{
+							if (file_config.isOpen())
+							{
+								file_config.close();
+							}
+							//未成功打开config.json
+							inited_result = -1;
+							return -1;
+						}
+
+					}
+					else
+					{
+						file_config.open(QIODevice::ReadOnly);
+						QByteArray config_data = file_config.readAll();
+						Jsdoc = QJsonDocument::fromJson(config_data);
+						Current_settings = Jsdoc.object();
+					}
+					inited = true;
 				}
-				inited = true;
 			}
 			catch (const std::exception&)
 			{
@@ -277,6 +322,7 @@ public:
 		2.<-1>:未打开数据库
 		3.<-2>:未初始化
 		4.<-3>:插入数据出错/已注册
+		4.<-4>:未成功创建数据库
 		*/
 		if (inited == false)
 		{
@@ -302,54 +348,30 @@ public:
 				//未打开用户数据库
 				return -1;
 			}
+			//if (!sql_query.exec("create table if not exists Users( Name VARCHAR(10), UUID VARCHAR(56) PRIMARY KEY, Password VARCHAR(64));"))
+			//{
+			//	//qDebug() << "Error: Fail to create table." << sql_query.lastError();
+			//	db.close();
+			//	return -4;
+			//}
 			QSqlQuery sql_query(db);
 			QString psw = QString::fromLocal8Bit(Psw.c_str());
 			QString username = QString::fromLocal8Bit(Username.c_str());
+			QString cmd = "insert into Users values(?,?,?)";			
+			sql_query.prepare(cmd);
+			sql_query.addBindValue(username);
+			sql_query.addBindValue((QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex());
+			sql_query.addBindValue((QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex());
 
-			QString cmd;
-
-
-			if (psw == "" && username != "")
-			{
-				cmd = "create table if not exists Users ( Name VARCHAR(10), UUID VARCHAR(56), PRIMARY KEY(UUID))";
-				sql_query.prepare(cmd);
-				if (!sql_query.exec())
-				{
-					//qDebug() << "Error: Fail to create table." << sql_query.lastError();
-					db.close();
-					return -2;
-				}
-				cmd = "insert into Users values(?,?)";
-				sql_query.prepare(cmd);
-				sql_query.addBindValue(username);
-				sql_query.addBindValue((QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex());
-			}
-			else if (psw != "" && username != "")
-			{
-				cmd = "create table if not exists Users ( Name VARCHAR(10), UUID VARCHAR(56), Password VARCHAR(64), PRIMARY KEY(UUID))";
-				sql_query.prepare(cmd);
-				if (!sql_query.exec())
-				{
-					//qDebug() << "Error: Fail to create table." << sql_query.lastError();
-					db.close();
-					return -2;
-				}
-				cmd = "insert into Users values(?,?,?)";
-				sql_query.prepare(cmd);
-				sql_query.addBindValue(username);
-				sql_query.addBindValue((QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex());
-				sql_query.addBindValue((QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex());
-			}
 			if (!sql_query.exec())
 			{
-				//qDebug() << sql_query.lastError() << endl;
+				qDebug() << sql_query.lastError() << endl;
 				db.close();
 				return -3;
 			}
 			db.close();
 			return 0;
 		}
-
 	}
 	//登录 
 	int login(std::string Username, std::string Psw = "")
@@ -360,6 +382,7 @@ public:
 		2.<-1>:未打开数据库
 		3.<-2>:未初始化
 		4.<-3>:未登录成功(密码或用户名错误)
+		4.<-4>:未成功打开数据库搜索
 		*/
 		//判断是否初始化
 		if (inited == false)
@@ -386,50 +409,24 @@ public:
 		QSqlQuery sql_query(db);
 		QString psw = QString::fromLocal8Bit(Psw.c_str());
 		QString username = QString::fromLocal8Bit(Username.c_str());
-		if (psw == "" && username != "")
+		QString cmd = "select * from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'";
+		sql_query.prepare(cmd);
+		if (!sql_query.exec())
 		{
-			QString cmd = "select * from Users where Name='"+ username +"' and UUID='"+ (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex()+"'";
-			sql_query.prepare(cmd);
-			if (!sql_query.exec())
-			{
-				//qDebug() << "Error: Fail to select." << sql_query.lastError();
-				db.close();
-				return -2;
-			}
-			if (!sql_query.next())
-			{
-				db.close();
-				return -3;
-			}
+			//qDebug() << "Error: Fail to select." << sql_query.lastError();
 			db.close();
-			return 0;
+			return -4;
 		}
-		else if (psw != "" && username != "")
+		if (!sql_query.next())
 		{
-			QString cmd = "select * from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'";
-			sql_query.prepare(cmd);
-			if (!sql_query.exec())
-			{
-				//qDebug() << "Error: Fail to select." << sql_query.lastError();
-				db.close();
-				return -2;
-			}
-			if (!sql_query.next())
-			{
-				db.close();
-				return -3;
-			}
 			db.close();
-			return 0;
+			return -3;
 		}
 		db.close();
 		return 0;
-	
-
-
 	}
 	//查看所有用户 *[返回QJsonObject user_list]
-	QJsonObject show_users(void)
+	QJsonObject get_users(void)
 	{
 		QJsonObject get;
 		if (inited == false)
@@ -453,23 +450,27 @@ public:
 			//未打开用户数据库的情况
 			return get;
 		}
+		QJsonObject psw_list;
 		QSqlQuery query(db);
 		query.exec("select * from Users");
 		QSqlRecord rec = query.record();
 		QString name;
 		QString uuid;
+		QString psw;
 		while (query.next())
 		{
 			rec = query.record();
 			uuid = query.value(rec.indexOf("UUID")).toString();
 			name = query.value(rec.indexOf("Name")).toString();
+			psw = query.value(rec.indexOf("Password")).toString();
 			//qDebug() << "UserName:" << name;
 			//qDebug() << "UUID:" << uuid;
 			get.insert(name,uuid);
-
+			psw_list.insert(uuid, psw);
 		}
 		db.close();
 		user_list = get;
+		user_psw = psw_list;
 		return get;
 	}
 	//删除用户
@@ -481,10 +482,23 @@ public:
 		2.<-1>:未成功打开用户数据库
 		3.<-2>:未初始化
 		4.<-3>:未成功删除/其他错误
+		5.<-4>:不存在该用户
+		6.<-5>:密码错误
 		*/
 		if (inited == false)
 		{
 			return -2;
+		}
+		//更新用户列表
+		get_users();
+		QString username = QString::fromLocal8Bit(Username.c_str());
+		if (!user_list.contains(username))
+		{
+			return -4;
+		}
+		if (!user_psw.contains(user_list.value(username).toString()))
+		{
+			return -5;
 		}
 		//判断是否存在Users连接
 		if (QSqlDatabase::contains("Users"))
@@ -504,39 +518,114 @@ public:
 			return -1;
 		}
 		QSqlQuery query(db);
-		QString username = QString::fromLocal8Bit(Username.c_str());
 		QString psw = QString::fromLocal8Bit(Psw.c_str());
-		if (Username != "" && psw == "")
+
+		if (query.exec("delete from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'"))
 		{
-			if (query.exec("delete from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "'"))
+			db.close();
+			get_users();
+			if (user_list.value(username) == (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex())
 			{
-				db.close();
-				show_users();
-				if (user_list.value(username) == (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex())
-				{
-					//未成功删除
-					return -3;
-				}
-				return 0;
+				//未成功删除
+				return -3;
 			}
-		}
-		else if (Username != "" && psw != "")
-		{
-			if (query.exec("delete from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'"))
-			{
-				db.close();
-				show_users();
-				if (user_list.value(username) == (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex())
-				{
-					//未成功删除
-					return -3;
-				}
-				return 0;
-			}
+			return 0;
 		}
 		db.close();
 		return -3;
 	}
+	//创建用户组
+	int create_usergroup(std::string GroupName)
+	{
+		/*
+		[返回值说明]
+		1.<0>:运行正常
+		2.<-1>:未成功打开数据库
+		3.<-2>:未初始化
+		4.<-3>:未成功创建用户组
+		*/
+		if (inited == false)
+		{
+			return -2;
+		}
+		//判断是否存在Users连接
+		if (QSqlDatabase::contains("UserGroup"))
+		{
+			db = QSqlDatabase::database("UserGroup");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "UserGroup");
+			db.setDatabaseName(UserFilePath + "/UserGroup.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return -1;
+		}
+		QString groupname = QString::fromLocal8Bit(GroupName.c_str());
+		QSqlQuery sql_query(db);
+		if (!sql_query.exec("create table if not exists "+groupname+"( Name VARCHAR(10), UUID VARCHAR(56) PRIMARY KEY);"))
+		{
+			//qDebug() << "Error: Fail to create table." << sql_query.lastError();
+			db.close();
+			return -3;
+		}
+		db.close();
+		return 0;
+	}
+	//向用户组内添加用户
+	int add_user(std::string Username, std::string GroupName)
+	{
+		/*
+		[返回值说明]
+		1.<0>:运行正常
+		2.<-1>:未成功打开数据库
+		3.<-2>:未初始化
+		4.<-3>:不存在该用户
+		5.<-4>:未成功添加用户
+		*/
+		if (inited == false)
+		{
+			return -2;
+		}
+		//更新用户列表
+		get_users();
+		QString groupname = QString::fromLocal8Bit(GroupName.c_str());
+		QString username = QString::fromLocal8Bit(Username.c_str());		
+		if (!user_list.contains(username))
+		{
+			return -3;
+		}
+		//判断是否存在Users连接
+		if (QSqlDatabase::contains("UserGroup"))
+		{
+			db = QSqlDatabase::database("UserGroup");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "UserGroup");
+			db.setDatabaseName(UserFilePath + "/UserGroup.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return -1;
+		}
+		QSqlQuery sql_query(db);
+		if (!sql_query.exec("insert into " + groupname + " values('" + username + "','" + user_list.value(username).toString() + "')"))
+		{
+			qDebug() << sql_query.lastError() << endl;
+			db.close();
+			return -4;
+		}
+		db.close();
+		return 0;
 
-
+		
+	}
 };
