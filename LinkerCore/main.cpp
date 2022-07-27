@@ -15,9 +15,12 @@ int main(int argc, char* argv[])
 	qDebug() << QString::fromLocal8Bit("²âÊÔ×¢²á:" )<< LC.reg("²âÊÔ") << endl;
 	qDebug() << QString::fromLocal8Bit("²âÊÔµÇÂ¼:") << LC.login("²âÊÔ") << endl;
 	qDebug() << QString::fromLocal8Bit("²âÊÔ´´½¨ÓÃ»§×é'ÆÕÍ¨':") << LC.create_usergroup("ÆÕÍ¨");
-	qDebug() << QString::fromLocal8Bit("²âÊÔÌí¼ÓÓÃ»§µ½ÓÃ»§×é'ÆÕÍ¨':") << LC.add_user("²âÊÔ", "ÆÕÍ¨");
+	qDebug() << QString::fromLocal8Bit("²âÊÔÌí¼ÓÓÃ»§µ½ÓÃ»§×é'ÆÕÍ¨':") << LC.add_user("²âÊÔ", "ÆÕÍ¨") << endl;
+	qDebug() << LC.get_groupusers("ÆÕÍ¨");
+	qDebug() << LC.get_usergroups("²âÊÔ") << endl;
+	qDebug() << QString::fromLocal8Bit("²âÊÔ×éÄÚÉ¾³ýÓÃ»§'²âÊÔ':") << LC.remove_user("²âÊÔ","ÆÕÍ¨") << endl;
 	qDebug() << QString::fromLocal8Bit("²âÊÔÉ¾³ýÓÃ»§'²âÊÔ':") << LC.delete_user("²âÊÔ") << endl;
-	qDebug() << LC.get_users() << endl;
-
+	qDebug() << LC.get_usergroups("²âÊÔ") << endl;
+	
 } 
 

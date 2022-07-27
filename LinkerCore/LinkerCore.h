@@ -35,6 +35,87 @@ private:
 	//是否记录日志（默认开启
 	bool Logging = true;
 
+	int _remove_user(std::string Username, std::string GroupName)
+	{
+		/*
+		[返回值说明]
+		1.<0>:运行正常
+		2.<-1>:未成功打开数据库
+		3.<-2>:未初始化
+		4.<-3>:不存在该用户
+		5.<-4>:未成功删除该用户
+		6.<-5>:未成功删除记录
+		*/
+		if (inited == false)
+		{
+			return -2;
+		}
+		//更新用户列表
+		get_groupusers(GroupName);
+		QString groupname = GroupName.c_str();
+		QString username = QString::fromLocal8Bit(Username.c_str());
+		if (groupuser_list.contains(username) == false)
+		{
+			return -3;
+		}
+		//判断是否存在UserGroup连接
+		if (QSqlDatabase::contains("UserGroup"))
+		{
+			db = QSqlDatabase::database("UserGroup");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "UserGroup");
+			db.setDatabaseName(UserFilePath + "/UserGroup.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return -1;
+		}
+		QSqlQuery sql_query(db);
+		if (!sql_query.exec("delete from " + groupname + " where Name='" + username + "' and UUID='" + user_list.value(username).toString() + "'"))
+		{
+			//qDebug() << sql_query.lastError() << endl;
+			db.close();
+			return -4;
+		}
+		db.close();
+		get_users();
+		if (user_list.contains(username) == false)
+		{
+			return 0;
+		}
+		/************删除用户组记录************/
+		{
+			if (QSqlDatabase::contains("Users"))
+			{
+				db = QSqlDatabase::database("Users");
+			}
+			else
+			{
+				db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+				db.setDatabaseName(UserFilePath + "/Users.lsf");
+			}
+			//打开数据库
+			db.open();
+			if (!db.isOpen())
+			{
+				//未打开用户数据库
+				return -1;
+			}
+			QSqlQuery query(db);
+			if (!query.exec("delete from " + username + " where GroupName='" + groupname + "'"))
+			{
+				//qDebug() << query.lastError() << endl;
+				db.close();
+				return -5;
+			}
+		}
+		return 0;
+	}
 
 
 public:
@@ -65,15 +146,14 @@ public:
 	//Json文档
 	QJsonDocument Jsdoc;
 
-	//由函数 show_users 赋值
+	//由函数 get_users 赋值
 	QJsonObject user_list;
 	QJsonObject user_psw;
 
-	/*当前用户操作*/
-	//用户名
-	QString UserName;
-	//用户UUID
-	QString UserUUID;
+	//由函数 get_groupusers 赋值[*动态变化]
+	QJsonObject groupuser_list;
+	QJsonObject usergroup_list;
+
 
 
 
@@ -135,6 +215,7 @@ public:
 						Dir.mkdir(PackagePath);
 					}
 				}
+
 				/**创建用户数据库**/
 				{
 					if (QSqlDatabase::contains("Users"))
@@ -321,8 +402,9 @@ public:
 		1.<0>:运行正常
 		2.<-1>:未打开数据库
 		3.<-2>:未初始化
-		4.<-3>:插入数据出错/已注册
-		4.<-4>:未成功创建数据库
+		4.<-3>:插入数据出错
+		5.<-4>:未成功创建用户组关联表
+		6.<-5>:已注册
 		*/
 		if (inited == false)
 		{
@@ -330,7 +412,12 @@ public:
 		}
 		else
 		{
-
+			get_users();
+			QString username = QString::fromLocal8Bit(Username.c_str());
+			if (user_list.contains(username))
+			{
+				return -5;
+			}
 			if (QSqlDatabase::contains("Users"))
 			{
 				db = QSqlDatabase::database("Users");
@@ -348,15 +435,8 @@ public:
 				//未打开用户数据库
 				return -1;
 			}
-			//if (!sql_query.exec("create table if not exists Users( Name VARCHAR(10), UUID VARCHAR(56) PRIMARY KEY, Password VARCHAR(64));"))
-			//{
-			//	//qDebug() << "Error: Fail to create table." << sql_query.lastError();
-			//	db.close();
-			//	return -4;
-			//}
-			QSqlQuery sql_query(db);
+			QSqlQuery sql_query(db);			
 			QString psw = QString::fromLocal8Bit(Psw.c_str());
-			QString username = QString::fromLocal8Bit(Username.c_str());
 			QString cmd = "insert into Users values(?,?,?)";			
 			sql_query.prepare(cmd);
 			sql_query.addBindValue(username);
@@ -365,9 +445,15 @@ public:
 
 			if (!sql_query.exec())
 			{
-				qDebug() << sql_query.lastError() << endl;
+				//qDebug() << sql_query.lastError() << endl;
 				db.close();
 				return -3;
+			}
+			if (!sql_query.exec("create table if not exists "+username+"( GroupName VARCHAR PRIMARY KEY);"))
+			{
+				//qDebug() << "Error: Fail to create table." << sql_query.lastError();
+				db.close();
+				return -4;
 			}
 			db.close();
 			return 0;
@@ -522,7 +608,33 @@ public:
 
 		if (query.exec("delete from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'"))
 		{
-			db.close();
+			get_usergroups(Username);
+			int i = 0;
+			int len = usergroup_list.length();
+			QString groupname;
+			for (i; i < len; ++i)
+			{
+				groupname = usergroup_list.value(QString::number(i)).toString();
+				_remove_user(Username, groupname.toStdString());
+			}
+			//判断是否存在Users连接
+			if (QSqlDatabase::contains("Users"))
+			{
+				db = QSqlDatabase::database("Users");
+			}
+			else
+			{
+				db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+				db.setDatabaseName(UserFilePath + "/Users.lsf");
+			}
+			db.open();
+			if (!query.exec("drop table " + username))
+			{
+				db.close();
+				//未成功删除
+				return -3;
+			}
+			
 			get_users();
 			if (user_list.value(username) == (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex())
 			{
@@ -548,7 +660,7 @@ public:
 		{
 			return -2;
 		}
-		//判断是否存在Users连接
+		//判断是否存在UserGroup连接
 		if (QSqlDatabase::contains("UserGroup"))
 		{
 			db = QSqlDatabase::database("UserGroup");
@@ -586,6 +698,8 @@ public:
 		3.<-2>:未初始化
 		4.<-3>:不存在该用户
 		5.<-4>:未成功添加用户
+		6.<-5>:已注册 
+		7.<-6>:未成功向用户组关联表添加组
 		*/
 		if (inited == false)
 		{
@@ -593,13 +707,19 @@ public:
 		}
 		//更新用户列表
 		get_users();
-		QString groupname = QString::fromLocal8Bit(GroupName.c_str());
 		QString username = QString::fromLocal8Bit(Username.c_str());		
 		if (!user_list.contains(username))
 		{
 			return -3;
 		}
-		//判断是否存在Users连接
+		QString groupname = QString::fromLocal8Bit(GroupName.c_str());
+		//更新组内用户列表
+		get_groupusers(GroupName);
+		if (groupuser_list.contains(username))
+		{
+			return -5;
+		}
+		//判断是否存在UserGroup连接
 		if (QSqlDatabase::contains("UserGroup"))
 		{
 			db = QSqlDatabase::database("UserGroup");
@@ -619,13 +739,212 @@ public:
 		QSqlQuery sql_query(db);
 		if (!sql_query.exec("insert into " + groupname + " values('" + username + "','" + user_list.value(username).toString() + "')"))
 		{
-			qDebug() << sql_query.lastError() << endl;
+			//qDebug() << sql_query.lastError() << endl;
 			db.close();
 			return -4;
 		}
 		db.close();
-		return 0;
+		/************添加用户组记录************/
+		if (QSqlDatabase::contains("Users"))
+		{
+			db = QSqlDatabase::database("Users");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+			db.setDatabaseName(UserFilePath + "/Users.lsf");
+		}
+		//打开数据库
+		db.open();
 
+		if (!db.isOpen())
+		{
+			//未打开用户数据库
+			return -1;
+		}
+		QSqlQuery query(db);
+		if (!query.exec("insert into "+username+" values('"+groupname+"')"))
+		{
+			//qDebug() << query.lastError() << endl;
+			db.close();
+			return -6;
+		}
 		
+		return 0;
+	}
+	//从组内删除用户
+	int remove_user(std::string Username, std::string GroupName)
+	{
+		/*
+		[返回值说明]
+		1.<0>:运行正常
+		2.<-1>:未成功打开数据库
+		3.<-2>:未初始化
+		4.<-3>:不存在该用户
+		5.<-4>:未成功删除该用户
+		6.<-5>:未成功删除记录
+		*/
+		if (inited == false)
+		{
+			return -2;
+		}
+		//更新用户列表
+		get_groupusers(GroupName);
+		QString groupname = QString::fromLocal8Bit(GroupName.c_str());
+		QString username = QString::fromLocal8Bit(Username.c_str());
+		if (groupuser_list.contains(username)==false)
+		{
+			return -3;
+		}
+		//判断是否存在UserGroup连接
+		if (QSqlDatabase::contains("UserGroup"))
+		{
+			db = QSqlDatabase::database("UserGroup");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "UserGroup");
+			db.setDatabaseName(UserFilePath + "/UserGroup.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return -1;
+		}
+		QSqlQuery sql_query(db);
+		if (!sql_query.exec("delete from "+groupname+" where Name='" + username + "' and UUID='" + user_list.value(username).toString() + "'"))
+		{
+			//qDebug() << sql_query.lastError() << endl;
+			db.close();
+			return -4;
+		}
+		db.close();
+		get_users();
+		if (user_list.contains(username) == false)
+		{
+			return 0;
+		}
+		/************删除用户组记录************/
+		{
+			if (QSqlDatabase::contains("Users"))
+			{
+				db = QSqlDatabase::database("Users");
+			}
+			else
+			{
+				db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+				db.setDatabaseName(UserFilePath + "/Users.lsf");
+			}
+			//打开数据库
+			db.open();
+			if (!db.isOpen())
+			{
+				//未打开用户数据库
+				return -1;
+			}
+			QSqlQuery query(db);
+			if (!query.exec("delete from " + username + " where GroupName='" + groupname + "'"))
+			{
+				//qDebug() << query.lastError() << endl;
+				db.close();
+				return -5;
+			}
+		}
+		return 0;
+	}
+	//查看组内用户 *[返回QJsonObject groupuser_list]
+	QJsonObject get_groupusers(std::string GroupName)
+	{
+		QJsonObject get;
+		if (inited == false)
+		{
+			return get;
+		}
+		//判断是否存在Users连接
+		if (QSqlDatabase::contains("UserGroup"))
+		{
+			db = QSqlDatabase::database("UserGroup");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "UserGroup");
+			db.setDatabaseName(UserFilePath + "/UserGroup.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return get;
+		}
+		QJsonObject psw_list;
+		QSqlQuery query(db);
+		QString groupname = QString::fromLocal8Bit(GroupName.c_str());
+		if (!query.exec("select * from " + groupname))
+		{
+			//qDebug() << query.lastError();
+			return get;
+		}
+		
+		QSqlRecord rec = query.record();
+		QString name;
+		QString uuid;
+		while (query.next())
+		{
+			rec = query.record();
+			uuid = query.value(rec.indexOf("UUID")).toString();
+			name = query.value(rec.indexOf("Name")).toString();
+			//qDebug() << "UserName:" << name;
+			//qDebug() << "UUID:" << uuid;
+			get.insert(name, uuid);
+		}
+		db.close();
+		groupuser_list = get;
+		return get;
+	}
+	//查看用户关联的用户组 *[返回QJsonObject groupuser_list]
+	QJsonObject get_usergroups(std::string Username)
+	{
+		QJsonObject get;
+		if (inited == false)
+		{
+			return get;
+		}
+		//判断是否存在Users连接
+		if (QSqlDatabase::contains("Users"))
+		{
+			db = QSqlDatabase::database("Users");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+			db.setDatabaseName(UserFilePath + "/Users.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return get;
+		}
+		QSqlQuery query(db);
+		QString username = QString::fromLocal8Bit(Username.c_str());
+		query.exec("select * from " + username);
+		QSqlRecord rec = query.record();
+		QString name;
+		QString uuid;
+		int i = 0;
+		while (query.next())
+		{
+			rec = query.record();
+			uuid = query.value(rec.indexOf("GroupName")).toString();
+			get.insert(QString::number(i), uuid);
+			++i;
+		}
+		db.close();
+		usergroup_list = get;
+		return get;
 	}
 };
