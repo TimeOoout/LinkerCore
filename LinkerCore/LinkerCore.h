@@ -18,6 +18,8 @@
 #include <QtSql\qsqlerror.h>
 #include <QtSql\qsqlquery.h>
 #include <QtSql\qsqlrecord.h>
+#include <qdatetime.h>
+#include <qtextstream.h>
 
 
 
@@ -30,8 +32,7 @@ private:
 	bool logined = false;
 	//是否初始化设置
 	bool inited_setting = false;
-	//初始化结果
-	int inited_result = -3;
+	
 	//是否记录日志（默认开启
 	bool Logging = true;
 
@@ -76,7 +77,7 @@ private:
 			return -1;
 		}
 		QSqlQuery sql_query(db);
-		if (!sql_query.exec("delete from " + groupname + " where Name='" + username + "' and UUID='" + user_list.value(username).toString() + "'"))
+		if (!sql_query.exec("delete from " + groupname + " where Name='" + username + "' and UUID='" + groupuser_list.value(username).toString() + "'"))
 		{
 			//qDebug() << sql_query.lastError() << endl;
 			db.close();
@@ -119,6 +120,8 @@ private:
 
 
 public:
+	//初始化结果
+	int inited_result = -10086;
 	//数据库操作
 	QSqlDatabase db;
 	//数据文件主路径
@@ -135,6 +138,7 @@ public:
 	QFile File;
 	//config文件
 	QFile file_config;
+	QFile file_log;
 	//通用路径操作
 	QDir Dir;
 	//项目路径组
@@ -145,6 +149,8 @@ public:
 	QJsonObject Current_settings;
 	//Json文档
 	QJsonDocument Jsdoc;
+	//当前时间 
+	QDateTime curDateTime;
 
 	//由函数 get_users 赋值
 	QJsonObject user_list;
@@ -155,11 +161,8 @@ public:
 	QJsonObject usergroup_list;
 
 
-
-
-
 	//初始化类
-	int init(QJsonObject pro_path,bool log=true)
+	int init(QJsonObject pro_path)
 	{
 		/*
 		[返回值说明]
@@ -172,7 +175,6 @@ public:
 		{
 			try
 			{
-				Logging = log;
 				//数据文件主路径
 				{
 					MainPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/";
@@ -193,7 +195,14 @@ public:
 				//用户文件路径
 				UserFilePath = MainPath + "/user";
 				//日志路径
-				LogPath = MainPath + "/log";
+				curDateTime = QDateTime::currentDateTime();
+				LogPath = MainPath + "/log/" + curDateTime.toString("yyyy-MM-dd_hh-mm-ss") + ".log";
+				file_log.setFileName(LogPath);
+				Logging = true;
+				if (Logging == true)
+				{
+					file_log.open(QIODevice::ReadWrite);
+				}
 				//组件路径
 				PackagePath = MainPath + "/package";
 				//获取项目文件路径
@@ -233,6 +242,7 @@ public:
 					if (!db.isOpen())
 					{
 						//未打开用户数据库
+						inited_result = -1;
 						return -1;
 					}
 					QSqlQuery sql_query(db);
@@ -240,6 +250,7 @@ public:
 					{
 						//qDebug() << "Error: Fail to create table." << sql_query.lastError();
 						db.close();
+						inited_result = -3;
 						return -3;
 					}
 				}
@@ -615,7 +626,7 @@ public:
 			for (i; i < len; ++i)
 			{
 				groupname = usergroup_list.value(QString::number(i)).toString();
-				_remove_user(Username, groupname.toStdString());
+				_remove_user(Username, groupname.toStdString());		
 			}
 			//判断是否存在Users连接
 			if (QSqlDatabase::contains("Users"))
@@ -814,7 +825,7 @@ public:
 			return -1;
 		}
 		QSqlQuery sql_query(db);
-		if (!sql_query.exec("delete from "+groupname+" where Name='" + username + "' and UUID='" + user_list.value(username).toString() + "'"))
+		if (!sql_query.exec("delete from "+groupname+" where Name='" + username + "' and UUID='" + groupuser_list.value(username).toString() + "'"))
 		{
 			//qDebug() << sql_query.lastError() << endl;
 			db.close();
@@ -947,6 +958,36 @@ public:
 		usergroup_list = get;
 		return get;
 	}
+	//插入日志
+	int write_log(std::string Info,std::string Utils="Utils" , std::string Type="INFO")
+	{
+		/*
+		[返回值说明]
+		1.<0>:运行正常
+		2.<-1>:未成功打开日志文件
+		3.<-2>:未初始化
+		*/
+		if (inited == false)
+		{
+			return -2;
+		}
+
+		if (!file_log.isOpen())
+		{
+			if (!file_log.open(QIODevice::Append))
+			{
+				return -1;
+			}
+		}
+		QString info = QString::fromLocal8Bit(Info.c_str());
+		QString utils = QString::fromLocal8Bit(Utils.c_str());
+		QString type = QString::fromLocal8Bit(Type.c_str());
+		QTextStream stream(&file_log);
+		curDateTime = QDateTime::currentDateTime();
+		stream << curDateTime.toString("yyyy-MM-dd hh:mm:ss") << " - " << utils << ": " << type << ":" << info << "\n";
+		file_log.close();
+		return 0;
+	}
 
 	/*析构函数*/
 	~LinkerCore()
@@ -963,5 +1004,9 @@ public:
 			Dir.remove(UserFilePath + "/UserGroup.lsf.bak");
 		}
 		File.copy(UserFilePath + "/UserGroup.lsf", UserFilePath + "/UserGroup.lsf.bak");
+		if (file_log.isOpen())
+		{
+			file_log.close();
+		}
 	}
 };
