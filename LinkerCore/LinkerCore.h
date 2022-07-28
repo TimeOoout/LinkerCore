@@ -1,5 +1,13 @@
 #pragma once
 
+/*
+** (C) Copyright 2022 Hang Jiayu. All Rights Reserved.
+** Description:基于Qt的软件后台管理模板
+** Author:Hang Jiayu
+** Date:2022.07.28
+** Modify Record:完善基本功能
+*/
+
 #include <string>
 #include <iostream>
 
