@@ -947,4 +947,21 @@ public:
 		usergroup_list = get;
 		return get;
 	}
+
+	/*析构函数*/
+	~LinkerCore()
+	{
+		//备份用户数据
+		if (File.exists(UserFilePath + "/Users.lsf.bak"))
+		{
+			Dir.remove(UserFilePath + "/Users.lsf.bak");
+		}
+		File.copy(UserFilePath + "/Users.lsf", UserFilePath + "/Users.lsf.bak");
+		//备份用户组信息
+		if (File.exists(UserFilePath + "/UserGroup.lsf.bak"))
+		{
+			Dir.remove(UserFilePath + "/UserGroup.lsf.bak");
+		}
+		File.copy(UserFilePath + "/UserGroup.lsf", UserFilePath + "/UserGroup.lsf.bak");
+	}
 };
