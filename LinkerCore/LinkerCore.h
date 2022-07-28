@@ -479,7 +479,7 @@ public:
 		2.<-1>:未打开数据库
 		3.<-2>:未初始化
 		4.<-3>:未登录成功(密码或用户名错误)
-		4.<-4>:未成功打开数据库搜索
+		5.<-4>:未成功打开数据库搜索
 		*/
 		//判断是否初始化
 		if (inited == false)
@@ -569,6 +569,59 @@ public:
 		user_list = get;
 		user_psw = psw_list;
 		return get;
+	}
+	//修改密码
+	int chg_psw(std::string Username, std::string Psw="", std::string NewPsw = "")
+	{
+		/*
+		[返回值说明]
+		1.<0>:运行正常
+		2.<-1>:未成功打开用户数据库
+		3.<-2>:未初始化
+		4.<-3>:未成功修改
+		5.<-4>:不存在该用户
+		6.<-5>:密码错误
+		*/
+		if (inited == false)
+		{
+			return -2;
+		}
+		//更新用户列表
+		get_users();
+		QString username = QString::fromLocal8Bit(Username.c_str());
+		if (!user_list.contains(username))
+		{
+			return -4;
+		}
+		if (!user_psw.contains(user_list.value(username).toString()))
+		{
+			return -5;
+		}
+		//判断是否存在Users连接
+		if (QSqlDatabase::contains("Users"))
+		{
+			db = QSqlDatabase::database("Users");
+		}
+		else
+		{
+			db = QSqlDatabase::addDatabase("QSQLITE", "Users");
+			db.setDatabaseName(UserFilePath + "/Users.lsf");
+		}
+		//打开数据库
+		db.open();
+		if (!db.isOpen())
+		{
+			//未打开用户数据库的情况
+			return -1;
+		}
+		QSqlQuery query(db);
+		QString psw = QString::fromLocal8Bit(Psw.c_str());
+		QString Npsw = QString::fromLocal8Bit(NewPsw.c_str());
+		if (!query.exec("Update Users set Password='"+ (QString)QCryptographicHash::hash(Npsw.toLatin1(), QCryptographicHash::Sha3_256).toHex() +"' where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'"))
+		{
+			return -3;
+		}
+		return 0;
 	}
 	//删除用户
 	int delete_user(std::string Username, std::string Psw = "")
