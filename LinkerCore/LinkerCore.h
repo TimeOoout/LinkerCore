@@ -116,7 +116,7 @@ private:
 				return -1;
 			}
 			QSqlQuery query(db);
-			if (!query.exec("delete from " + username + " where GroupName='" + groupname + "'"))
+			if (!query.exec("delete from " + user_list.value(username).toString() + " where GroupName='" + groupname + "'"))
 			{
 				//qDebug() << query.lastError() << endl;
 				db.close();
@@ -456,10 +456,11 @@ public:
 			}
 			QSqlQuery sql_query(db);			
 			QString psw = QString::fromLocal8Bit(Psw.c_str());
-			QString cmd = "insert into Users values(?,?,?)";			
+			QString cmd = "insert into Users values(?,?,?)";
+			QString uuid = (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex();
 			sql_query.prepare(cmd);
 			sql_query.addBindValue(username);
-			sql_query.addBindValue((QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex());
+			sql_query.addBindValue(uuid);
 			sql_query.addBindValue((QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex());
 
 			if (!sql_query.exec())
@@ -468,7 +469,7 @@ public:
 				db.close();
 				return -3;
 			}
-			if (!sql_query.exec("create table if not exists "+username+"( GroupName VARCHAR PRIMARY KEY);"))
+			if (!sql_query.exec("create table if not exists "+ uuid +"( GroupName VARCHAR PRIMARY KEY);"))
 			{
 				//qDebug() << "Error: Fail to create table." << sql_query.lastError();
 				db.close();
@@ -678,7 +679,7 @@ public:
 		QSqlQuery query(db);
 		QString psw = QString::fromLocal8Bit(Psw.c_str());
 
-		if (query.exec("delete from Users where Name='" + username + "' and UUID='" + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'"))
+		if (query.exec("delete from Users where Name='" + username + "' and UUID='" + user_list.value(username).toString() + "' and Password='" + (QString)QCryptographicHash::hash(psw.toLatin1(), QCryptographicHash::Sha3_256).toHex() + "'"))
 		{
 			get_usergroups(Username);
 			int i = 0;
@@ -700,7 +701,7 @@ public:
 				db.setDatabaseName(UserFilePath + "/Users.lsf");
 			}
 			db.open();
-			if (!query.exec("drop table " + username))
+			if (!query.exec("drop table " + (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex() +" ;"))
 			{
 				db.close();
 				//未成功删除
@@ -708,11 +709,6 @@ public:
 			}
 			
 			get_users();
-			if (user_list.value(username) == (QString)QCryptographicHash::hash(username.toLatin1(), QCryptographicHash::Sha3_224).toHex())
-			{
-				//未成功删除
-				return -3;
-			}
 			return 0;
 		}
 		db.close();
@@ -835,7 +831,7 @@ public:
 			return -1;
 		}
 		QSqlQuery query(db);
-		if (!query.exec("insert into "+username+" values('"+groupname+"')"))
+		if (!query.exec("insert into "+ user_list.value(username).toString() + " values('" + groupname + "')"))
 		{
 			//qDebug() << query.lastError() << endl;
 			db.close();
@@ -917,7 +913,7 @@ public:
 				return -1;
 			}
 			QSqlQuery query(db);
-			if (!query.exec("delete from " + username + " where GroupName='" + groupname + "'"))
+			if (!query.exec("delete from " + user_list.value(username).toString() + " where GroupName='" + groupname + "'"))
 			{
 				//qDebug() << query.lastError() << endl;
 				db.close();
@@ -1003,7 +999,7 @@ public:
 		}
 		QSqlQuery query(db);
 		QString username = QString::fromLocal8Bit(Username.c_str());
-		query.exec("select * from " + username);
+		query.exec("select * from " + user_list.value(username).toString());
 		QSqlRecord rec = query.record();
 		QString name;
 		QString uuid;
